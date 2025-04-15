@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Notification Socket.IO</title>
+  <!-- Chargement de la bibliothèque client Socket.IO depuis un CDN -->
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Test Notification</h1>
+  <script>
+    // Se connecter au Notification Service. Pour du HTTPS, utilisez "wss://"
+    const socket = io("https://localhost:7005", { 
+      secure: true, 
+      rejectUnauthorized: false // pour accepter le certificat auto-signé en dev
+    });
+    
+    socket.on("connect", () => {
+      console.log("Connecté au Notification Service, socket ID :", socket.id);
+    });
+    
+    // Ecouter l'événement "notification"
+    socket.on("notification", (data) => {
+      console.log("Notification reçue :", data);
+      // Affiche une alerte (pour tester)
+      alert("Notification reçue : " + data.message);
+    });
+    
+    socket.on("connect_error", (err) => {
+      console.error("Erreur de connexion :", err);
+    });
+  </script>
+</body>
+</html>
