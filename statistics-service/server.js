@@ -6,7 +6,28 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const { Client } = require('pg');
 const cron = require('node-cron');
-const { haversineDistance } = require('../incident-service/controllers/incidentController');
+
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // rayon de la Terre en mètres
+    const toRad = degrees => degrees * Math.PI / 180;
+  
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+    const Δφ = toRad(lat2 - lat1);
+    const Δλ = toRad(lon2 - lon1);
+  
+    const sinΔφ2 = Math.sin(Δφ / 2);
+    const sinΔλ2 = Math.sin(Δλ / 2);
+  
+    const a = sinΔφ2 * sinΔφ2 +
+              Math.cos(φ1) * Math.cos(φ2) *
+              sinΔλ2 * sinΔλ2;
+  
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+    return R * c;
+  }
 
 dotenv.config();
 const app = express();
@@ -140,70 +161,78 @@ app.get('/incidents-per-day', async (req, res) => {
 
 
 
+// Endpoint de debug et filtrage spatial + agrégation temporelle
 app.get('/statistics/congestion-periods', async (req, res) => {
-  const threshold = parseInt(req.query.threshold, 10) || 5;
-  const window   = req.query.window === '30min' ? '30min' : 'hour';
-  const lat      = parseFloat(req.query.lat);
-  const lng      = parseFloat(req.query.lng);
-  const radius   = parseInt(req.query.radius, 10) || 1000; // en mètres
-
-  if (isNaN(lat) || isNaN(lng)) {
-    return res.status(400).json({
-      error: "Paramètres 'lat' et 'lng' obligatoires et numériques."
-    });
-  }
-
-  // 1) Récupération de tous les incidents traffic
-  const client = new Client({ connectionString: DATABASE_URL });
-  try {
-    await client.connect();
-    const { rows } = await client.query(`
-      SELECT incident_id, created_at, latitude, longitude
-      FROM incident_statistics
-      WHERE type = 'traffic'
-    `);
-
-    // 2) Filtrer ceux à moins de radius mètres
-    const nearby = rows.filter(r => {
-      return haversineDistance(lat, lng, r.latitude, r.longitude) <= radius;
-    });
-
-    // 3) Regrouper par plage de temps
-    const buckets = {};
-    nearby.forEach(({ created_at }) => {
-      const dt = new Date(created_at);
-      let key;
-      if (window === 'hour') {
-        key = dt.toISOString().slice(0,13) + ":00:00Z"; // ex "2025-04-15T08:00:00Z"
-      } else {
-        // demi‑heure
-        const m = dt.getUTCMinutes();
-        const slot = m < 30 ? "00" : "30";
-        key = dt.toISOString().slice(0,13) + `:${slot}:00Z`;
-      }
-      buckets[key] = (buckets[key] || 0) + 1;
-    });
-
-    // 4) Ne garder que les buckets >= threshold
-    const result = Object.entries(buckets)
-      .filter(([, count]) => count >= threshold)
-      .map(([period_start, traffic_incident_count]) => ({
-        period_start,
-        traffic_incident_count
-      }))
-      .sort((a,b) => a.period_start.localeCompare(b.period_start));
-
-    res.json(result);
-
-  } catch (err) {
-    console.error("[Statistics Service] Erreur /congestion-periods JS:", err);
-    res.status(500).json({
-      error: "Impossible de récupérer les périodes de congestion."
-    });
-  } finally {
-    await client.end();
-  }
-});
+    const threshold = parseInt(req.query.threshold, 10) || 5;
+    const window   = req.query.window === '30min' ? '30min' : 'hour';
+    const lat      = parseFloat(req.query.lat);
+    const lng      = parseFloat(req.query.lng);
+    const radius   = parseInt(req.query.radius, 10) || 1000;
+  
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ error: "lat et lng doivent être des nombres." });
+    }
+  
+    const client = new Client({ connectionString: DATABASE_URL });
+    try {
+      await client.connect();
+  
+      // 1) Récupération brute des incidents traffic
+      const { rows } = await client.query(`
+        SELECT incident_id, created_at, latitude, longitude
+        FROM incident_statistics
+        WHERE type = 'traffic'
+      `);
+    //   console.log("[DEBUG] total traffic rows:", rows.length);
+    //   console.log("[DEBUG] point de référence:", lat, lng, "radius:", radius, "threshold:", threshold);
+  
+      // 2) Log des distances
+      rows.forEach(r => {
+        const d = haversineDistance(lat, lng, r.latitude, r.longitude);
+        // console.log(`  [DEBUG] id=${r.incident_id} @(${r.latitude},${r.longitude}) → ${d.toFixed(1)} m`);
+      });
+  
+      // 3) Filtrage géographique
+      const nearby = rows.filter(r =>
+        haversineDistance(lat, lng, r.latitude, r.longitude) <= radius
+      );
+    //   console.log("[DEBUG] rows within radius:", nearby.length);
+  
+      // 4) Agrégation temporelle
+      const buckets = {};
+      nearby.forEach(({ created_at }) => {
+        const dt = new Date(created_at);
+        let key;
+        if (window === 'hour') {
+          key = dt.toISOString().slice(0,13) + ":00:00Z";
+        } else {
+          const m = dt.getUTCMinutes();
+          const slot = m < 30 ? "00" : "30";
+          key = dt.toISOString().slice(0,13) + `:${slot}:00Z`;
+        }
+        buckets[key] = (buckets[key] || 0) + 1;
+      });
+    //   console.log("[DEBUG] buckets:", buckets);
+  
+      // 5) Filtrage par threshold
+      const result = Object.entries(buckets)
+        .filter(([, count]) => count >= threshold)
+        .map(([period_start, traffic_incident_count]) => ({
+          period_start,
+          traffic_incident_count
+        }))
+        .sort((a,b) => a.period_start.localeCompare(b.period_start));
+  
+    //   console.log("[DEBUG] result periods:", result);
+      res.json(result);
+  
+    } catch (err) {
+      console.error("[Statistics Service] Erreur /congestion-periods :", err.message);
+      res.status(500).json({ error: "Impossible de récupérer les périodes de congestion." });
+    } finally {
+      await client.end();
+    }
+  });
 
 
 // Endpoint de test
