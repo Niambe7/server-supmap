@@ -48,6 +48,14 @@ app.use('/notify', createProxyMiddleware({
   secure: false
 }));
 
+
+// sera proxyfiée vers votre Notification Service
+app.use('/statistics', createProxyMiddleware({
+  target: 'https://localhost:7006',
+  changeOrigin: true,
+  secure: false
+}));
+
 // Route test
 app.get('/', (req, res) => {
   res.send('API Gateway opérationnelle');

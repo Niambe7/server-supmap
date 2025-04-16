@@ -1,5 +1,27 @@
 // incident-service/controllers/incidentController.js
 const Incident = require('../models/Incident');
+const IncidentContribution = require('../models/IncidentContribution');
+
+// 
+const haversineDistance = (coord1, coord2) => {
+  // Coordonnées sous forme d'objet { lat, lng }
+  const toRad = (x) => (x * Math.PI) / 180;
+  const R = 6371e3; // Rayon de la Terre en mètres
+  const φ1 = toRad(coord1.lat);
+  const φ2 = toRad(coord2.lat);
+  const Δφ = toRad(coord2.lat - coord1.lat);
+  const Δλ = toRad(coord2.lng - coord1.lng);
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // Distance en mètres
+};
+
+
 
 // Signaler un incident
 const reportIncident = async (req, res) => {
@@ -75,7 +97,7 @@ const approveIncident = async (req, res) => {
   
 
     // Appel au Notification Service pour envoyer la notification
-    await axios.post('https://localhost:7005/notify', { 
+    await axios.post('https://localhost/notify/notify-changeway', { 
         message,
         data: { incidentId: incident.id, type: incident.type }
       });
@@ -122,4 +144,59 @@ const resolveIncident = async (req, res) => {
   };
 
 
-module.exports = { reportIncident , approveIncident , resolveIncident  };
+  // Fonction pour enregistrer une contribution sur un incident
+  const contributeIncident = async (req, res) => {
+    const incidentId = req.params.id;
+    const { vote, latitude, longitude } = req.body;  // Position actuelle du user et vote ('yes' ou 'no')
+    const user_id = req.user.id; // Renseigné par le middleware d'authentification
+  
+    // Vérifier que les champs obligatoires sont fournis et que vote est 'yes' ou 'no'
+    if (!vote || (vote !== 'yes' && vote !== 'no') || !latitude || !longitude) {
+      return res.status(400).json({ error: "Les champs 'vote', 'latitude' et 'longitude' sont requis, et 'vote' doit être 'yes' ou 'no'." });
+    }
+  
+    try {
+      // Récupérer l'incident depuis la base
+      const incident = await Incident.findByPk(incidentId);
+      if (!incident) {
+        return res.status(404).json({ error: 'Incident non trouvé.' });
+      }
+  
+
+      // Vérifier que l'utilisateur n'est pas celui qui a signalé l'incident
+    if (incident.user_id === user_id) {
+      return res.status(403).json({ error: "Vous ne pouvez pas contribuer à un incident que vous avez signalé." });
+    }
+
+      // Ici, on utilise les coordonnées exactes de l'incident stockées dans le modèle
+      const incidentCoordinates = { lat: incident.latitude, lng: incident.longitude };
+      const userCoordinates = { lat: parseFloat(latitude), lng: parseFloat(longitude) };
+  
+      // Calculer la distance en mètres entre l'utilisateur et l'incident
+      const distance = haversineDistance(incidentCoordinates, userCoordinates);
+      const maxDistance = 300; // Tolérance de 300 mètres
+  
+      if (distance > maxDistance) {
+        return res.status(403).json({ error: "Vous n'êtes pas assez proche de l'incident pour contribuer." });
+      }
+  
+      // Enregistrer la contribution dans la table des contributions
+      const contribution = await IncidentContribution.create({
+        incident_id: incidentId,
+        user_id,
+        vote,                    // 'yes' ou 'no'
+        latitude: userCoordinates.lat,
+        longitude: userCoordinates.lng
+      });
+  
+      return res.status(201).json({
+        message: 'Contribution enregistrée avec succès',
+        contribution
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'enregistrement de la contribution :", error.message);
+      return res.status(500).json({ error: "Erreur lors de l'enregistrement de la contribution." });
+    }
+  };
+
+module.exports = { reportIncident , approveIncident , resolveIncident , contributeIncident , haversineDistance  };

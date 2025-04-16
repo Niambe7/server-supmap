@@ -14,4 +14,7 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, incidentController.a
 // Route pour résoudre (lever) un incident (accessible aux admins)
 router.put('/:id/resolve', authMiddleware, adminMiddleware, incidentController.resolveIncident);
 
+// Nouvelle route pour contribuer à l'évaluation d'un incident (accessible aux utilisateurs authentifiés)
+router.post('/:id/contribute', authMiddleware, incidentController.contributeIncident);
+
 module.exports = router;

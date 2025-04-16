@@ -32,7 +32,14 @@ const io = socketIo(server, {
   });
   
   // Endpoint REST pour tester l'envoi d'une notification
-  app.post('/notify', (req, res) => {
+  app.post('/notify-changeway', (req, res) => {
+    const { message, data } = req.body;
+    console.log(`[Notification Service] Envoi d'une notification: ${message}`, data);
+    io.emit('notification', { message, data }); // Diffuse à tous les clients connectés
+    res.json({ status: 'Notification envoyée' });
+  });
+
+  app.post('/notify-contibute', (req, res) => {
     const { message, data } = req.body;
     console.log(`[Notification Service] Envoi d'une notification: ${message}`, data);
     io.emit('notification', { message, data }); // Diffuse à tous les clients connectés

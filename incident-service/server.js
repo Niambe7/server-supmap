@@ -29,7 +29,7 @@ const cert = fs.readFileSync('incident-service.crt');
 sequelize.authenticate()
   .then(() => {
     console.log("Connexion à la base de données réussie.");
-    return sequelize.sync({ force: true }); // Force la recréation des tables
+    return sequelize.sync({ alter: true }); // Force la recréation des tables
   })
   .then(() => {
     https.createServer({ key, cert }, app).listen(PORT, () => {
