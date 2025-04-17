@@ -1,69 +1,63 @@
-const https = require('https');
-const fs = require('fs');
+// api-gateway/index.js
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const dotenv = require('dotenv');
-dotenv.config();
 
+dotenv.config();
 const app = express();
 
+// Si vous passez derrière ngrok ou un autre proxy
+app.set('trust proxy', true);
+
+// Logging de chaque requête
 app.use((req, res, next) => {
-  console.log(`[API Gateway] Requête reçue: ${req.method} ${req.url}`);
+  console.log(`[API Gateway] ${req.method} ${req.url}`);
   next();
 });
 
-// Proxy pour authentification : pas de préfixe additionnel
+// Proxy vers l'auth-service (HTTP)
 app.use('/auth', createProxyMiddleware({
-  target: 'https://localhost:7002',
-  changeOrigin: true,
-  secure: false,
+  target: 'http://localhost:7002',
+  changeOrigin: true
 }));
 
-// proxy pour le user-service 
+// Proxy vers le user-service
 app.use('/users', createProxyMiddleware({
-  target: 'https://localhost:7001',
-  changeOrigin: true,
-  secure: false,
+  target: 'http://localhost:7001',
+  changeOrigin: true
 }));
 
-// Endpont pour la recherche d'itineraires
+// Proxy vers l'itinerary-service
 app.use('/itineraries', createProxyMiddleware({
-  target: 'https://localhost:7003',
-  changeOrigin: true,
-  secure: false
+  target: 'http://localhost:7003',
+  changeOrigin: true
 }));
 
-
-// Endpont pour le signalement d'incident
+// Proxy vers l'incident-service
 app.use('/incidents', createProxyMiddleware({
-  target: 'https://localhost:7004',
-  changeOrigin: true,
-  secure: false
+  target: 'http://localhost:7004',
+  changeOrigin: true
 }));
 
-// sera proxyfiée vers votre Notification Service
+// Proxy vers le notification-service
 app.use('/notify', createProxyMiddleware({
-  target: 'https://localhost:7005',
-  changeOrigin: true,
-  secure: false
+  target: 'http://localhost:7005',
+  changeOrigin: true
 }));
 
-
-// sera proxyfiée vers votre Notification Service
+// Proxy vers le statistics-service
 app.use('/statistics', createProxyMiddleware({
-  target: 'https://localhost:7006',
-  changeOrigin: true,
-  secure: false
+  target: 'http://localhost:7006',
+  changeOrigin: true
 }));
 
-// Route test
+// Route de test
 app.get('/', (req, res) => {
-  res.send('API Gateway opérationnelle');
+  res.send('API Gateway opérationnelle (HTTP)');
 });
 
-const PORT = process.env.PORT || 443;
-const key = fs.readFileSync('gateway.key');
-const cert = fs.readFileSync('gateway.crt');
-https.createServer({ key, cert }, app).listen(PORT, () => {
-  console.log(`API Gateway est en écoute en HTTPS sur le port ${PORT}`);
+// Démarrage en HTTP
+const PORT = process.env.PORT || 7777;
+app.listen(PORT, () => {
+  console.log(`API Gateway en HTTP sur http://localhost:${PORT}`);
 });

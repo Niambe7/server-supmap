@@ -1,5 +1,3 @@
-const https = require('https');
-const fs = require('fs');
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -74,20 +72,14 @@ const startServer = async () => {
       console.log('Modèles synchronisés avec la base de données');
     }
 
-    // Configuration HTTPS
-    const sslOptions = {
-      key: fs.readFileSync('localhost-key.pem'),
-      cert: fs.readFileSync('localhost.pem'),
-      minVersion: 'TLSv1.2'
-    };
 
     const PORT = process.env.PORT || 7001;
-    const server = https.createServer(sslOptions, app);
-
-    server.listen(PORT, () => {
-      console.log(`User-service en écoute sur https://localhost:${PORT}`);
-      console.log(`Environnement: ${process.env.NODE_ENV || 'development'}`);
+    app.listen(PORT, () => {
+      console.log(`User-service en HTTP sur http://localhost:${PORT}`);
     });
+
+    app.set('trust proxy', true);
+    
 
     // Gestion propre des arrêts
     process.on('SIGTERM', () => {
