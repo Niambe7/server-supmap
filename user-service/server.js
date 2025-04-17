@@ -6,6 +6,7 @@ const cors = require('cors');
 const sequelize = require('./config/db');
 const userRoutes = require('./routes/userRoutes');
 const locationRoutes = require('./routes/locationRoutes');
+const authMiddleware = require('./middleware/authMiddleware');
 
 // Configuration de l'environnement
 dotenv.config();

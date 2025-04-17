@@ -39,7 +39,7 @@ router.post('/', (req, res, next) => {
 router.get('/', (req, res, next) => {
   console.log('[UserRoutes] Route GET "/" appelée');
   next();
-} , authMiddleware, userController.getAllUsers);
+} , userController.getAllUsers);
 
 router.get('/:id', (req, res, next) => {
   console.log(`[UserRoutes] Route GET "/${req.params.id}" appelée`);
