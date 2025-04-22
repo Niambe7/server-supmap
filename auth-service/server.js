@@ -31,7 +31,7 @@ sequelize.authenticate()
   })
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`User-service en HTTP sur http://localhost:${PORT}`);
+      console.log(`Auth-service en HTTP sur http://localhost:${PORT}`);
     });
     
   })

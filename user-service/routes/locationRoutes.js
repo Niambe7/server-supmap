@@ -1,8 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios'); // Pour appeler le Notification Service
-const { haversineDistance } = require('../../incident-service/controllers/incidentController'); // votre fonction pour calculer la distance
 const Incident = require('../../incident-service/models/Incident'); // Modèle Incident
+
+const haversineDistance = (coord1, coord2) => {
+  // Coordonnées sous forme d'objet { lat, lng }
+  const toRad = (x) => (x * Math.PI) / 180;
+  const R = 6371e3; // Rayon de la Terre en mètres
+  const φ1 = toRad(coord1.lat);
+  const φ2 = toRad(coord2.lat);
+  const Δφ = toRad(coord2.lat - coord1.lat);
+  const Δλ = toRad(coord2.lng - coord1.lng);
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // Distance en mètres
+};
 
 // Middleware d'authentification déjà appliqué (pour avoir req.user)
 
@@ -27,7 +44,7 @@ router.post('/update', async (req, res) => {
       if (distance <= 300) {
         // Appeler le Notification Service pour envoyer une notification à cet utilisateur
         // Par exemple, en effectuant une requête POST vers le Notification Service
-        await axios.post('https://localhost/notify/notify-contibute', { 
+        await axios.post('http://localhost/notify/notify-contibute', { 
           message: `Attention, un incident de type "${incident.type}" a été signalé à proximité.`,
           data: { incidentId: incident.id, distance }
         }, {

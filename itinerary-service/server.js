@@ -1,6 +1,3 @@
-// itinerary-service/server.js
-const https = require('https');
-const fs = require('fs');
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -23,8 +20,6 @@ const itineraryRoutes = require('./routes/itineraryRoutes');
 app.use('/itineraries', itineraryRoutes);
 
 const PORT = process.env.PORT || 7003;
-const key = fs.readFileSync('itinerary-service.key');  // Renommé avec mkcert
-const cert = fs.readFileSync('itinerary-service.crt');   // Renommé avec mkcert
 
 sequelize.authenticate()
   .then(() => {
@@ -32,9 +27,10 @@ sequelize.authenticate()
     return sequelize.sync();
   })
   .then(() => {
-    https.createServer({ key, cert }, app).listen(PORT, () => {
-      console.log(`Itinerary-Service est en écoute en HTTPS sur le port ${PORT}`);
+    app.listen(PORT, () => {
+      console.log(`Itinerary-service en HTTP sur http://localhost:${PORT}`);
     });
+    
   })
   .catch(err => {
     console.error("Erreur de connexion à la base de données :", err);

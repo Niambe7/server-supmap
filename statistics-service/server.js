@@ -1,6 +1,3 @@
-// statistics-service/server.js
-const https = require('https');
-const fs = require('fs');
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -238,12 +235,8 @@ app.get('/statistics/congestion-periods', async (req, res) => {
 // Endpoint de test
 app.get('/', (req, res) => res.send('Statistics Service opérationnel'));
 
-// HTTPS avec mkcert
-const key = fs.readFileSync('statistics-service.key');
-const cert = fs.readFileSync('statistics-service.crt');
 const PORT = process.env.PORT || 7006;
 
-https.createServer({ key, cert }, app)
-     .listen(PORT, () => {
-  console.log(`[Statistics Service] HTTPS en écoute sur le port ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`Statistics-service en HTTP sur http://localhost:${PORT}`);
 });

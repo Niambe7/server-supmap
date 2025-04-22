@@ -1,6 +1,3 @@
-// incident-service/server.js
-const https = require('https');
-const fs = require('fs');
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -23,8 +20,6 @@ const incidentRoutes = require('./routes/incidentRoutes');
 app.use('/incidents', incidentRoutes);
 
 const PORT = process.env.PORT || 7004;
-const key = fs.readFileSync('incident-service.key');
-const cert = fs.readFileSync('incident-service.crt');
 
 sequelize.authenticate()
   .then(() => {
@@ -32,9 +27,10 @@ sequelize.authenticate()
     return sequelize.sync({ alter: true }); // Force la recréation des tables
   })
   .then(() => {
-    https.createServer({ key, cert }, app).listen(PORT, () => {
-      console.log(`Incident-Service est en écoute en HTTPS sur le port ${PORT}`);
+    app.listen(PORT, () => {
+      console.log(`Incident-service en HTTP sur http://localhost:${PORT}`);
     });
+    
   })
   .catch(err => {
     console.error("Erreur de connexion à la base :", err);

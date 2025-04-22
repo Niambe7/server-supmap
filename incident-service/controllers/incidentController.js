@@ -97,7 +97,7 @@ const approveIncident = async (req, res) => {
   
 
     // Appel au Notification Service pour envoyer la notification
-    await axios.post('https://localhost/notify/notify-changeway', { 
+    await axios.post('http://localhost/notify/notify-changeway', { 
         message,
         data: { incidentId: incident.id, type: incident.type }
       });

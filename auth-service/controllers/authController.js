@@ -24,7 +24,7 @@ exports.login = async (req, res) => {
     }
     // Générer le token JWT
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    res.status(200).json({ message: 'Connexion réussie', token });
+    res.status(200).json({ message: 'Connexion réussie', token , user });
   } catch (err) {
     console.error('[AuthController] Erreur lors de la connexion :', err);
     res.status(500).json({ error: "Erreur lors de la connexion" });

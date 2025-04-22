@@ -1,19 +1,18 @@
 // notification-service/server.js
 const express = require('express');
 const cors = require('cors');
-const https = require('https');
 const socketIo = require('socket.io');
 const dotenv = require('dotenv');
-const fs = require('fs');
+const http = require('http');
 dotenv.config();
 
 const app = express();
+
+const server = http.createServer(app);
+
 app.use(cors());
 app.use(express.json());
 
-const key = fs.readFileSync('notification-service.key');
-const cert = fs.readFileSync('notification-service.crt');
-const server = https.createServer({ key, cert }, app);
 
 // Initialisation de Socket.IO sur le serveur HTTP
 const io = socketIo(server, {
@@ -60,6 +59,6 @@ const io = socketIo(server, {
   
   // Démarrage du serveur
   const PORT = process.env.PORT || 7005;
-  server.listen(PORT, () => {
+  app.listen(PORT, () => {
     console.log(`[Notification Service] En écoute sur le port ${PORT}`);
   });
