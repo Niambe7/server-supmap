@@ -17,4 +17,9 @@ router.put('/:id/resolve', authMiddleware, adminMiddleware, incidentController.r
 // Nouvelle route pour contribuer à l'évaluation d'un incident (accessible aux utilisateurs authentifiés)
 router.post('/:id/contribute', authMiddleware, incidentController.contributeIncident);
 
+// Routes pour récupérer les incidents par statut
+router.get('/getincdentpending', authMiddleware, incidentController.getPendingIncidents);
+router.get('/getincdentactive', authMiddleware, incidentController.getActiveIncidents);
+router.get('/getincdentresolved', authMiddleware, incidentController.getResolvedIncidents);
+
 module.exports = router;

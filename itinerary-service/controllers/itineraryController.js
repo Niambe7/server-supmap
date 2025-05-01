@@ -5,64 +5,183 @@ const polyline = require('@mapbox/polyline');
 const Itinerary = require('../models/Itinerary');
 const client = new Client({});
 
-// ▶️ Créer un itinéraire, en tenant compte du choix d'éviter les péages
-const searchItinerary = async (req, res) => {
-  // Extraction des paramètres depuis le body
-  const { start_location, end_location, user_id, avoidTolls } = req.body;
 
-  // Validation des champs obligatoires
-  if (!start_location || !end_location || !user_id) {
+/**
+ * ▶️ Propose plusieurs itinéraires (au moins 2) sans les sauvegarder.
+ */
+ const searchItinerary = async (req, res) => {
+  const { start_location, end_location, avoidTolls } = req.body;
+  if (!start_location || !end_location) {
+    return res.status(400).json({ error: 'start_location et end_location requis.' });
+  }
+
+  try {
+    const { data } = await client.directions({
+      params: {
+        origin: start_location,
+        destination: end_location,
+        mode: 'driving',
+        overview: 'full',
+        alternatives: true,
+        key: process.env.GOOGLE_API_KEY,
+        ...(avoidTolls ? { avoid: 'tolls' } : {}),
+      },
+    });
+
+    if (!data.routes || data.routes.length === 0) {
+      return res.status(404).json({ error: 'Aucun itinéraire trouvé.' });
+    }
+
+    const itineraries = data.routes.map((route, index) => {
+      // Récupération des étapes détaillées
+      const steps = route.legs[0].steps;
+
+      // Construction du tracé géométrique à partir des steps
+      const routePoints = [];
+      for (const step of steps) {
+        const pts = polyline.decode(step.polyline.points)
+          .map(([lat, lng]) => ({ lat, lng }));
+        if (routePoints.length) pts.shift();
+        routePoints.push(...pts);
+      }
+
+      return {
+        id: index,
+        distance: route.legs[0].distance.value,
+        duration: route.legs[0].duration.value,
+        toll_free: Boolean(avoidTolls),
+        steps,                                        // ← on expose maintenant les instructions
+        route_points: routePoints,                    // pour l'affichage client
+        encoded_polyline: route.overview_polyline.points // utile si besoin de snap-to-roads
+      };
+    });
+
+    return res.status(200).json({
+      message: 'Itinéraires générés',
+      itineraries
+    });
+
+  } catch (err) {
+    console.error('❗ Erreur searchItinerary :', err.response?.data || err.message);
+    return res.status(500).json({
+      error: "Erreur lors de la recherche d'itinéraires.",
+      details: err.response?.data || err.message
+    });
+  }
+};
+
+
+
+/**
+ * ▶️ Charge et sauvegarde l'itinéraire sélectionné.
+ *    Il décode la chaîne encodée, puis stocke les points.
+ */
+// const loadItinerary = async (req, res) => {
+//   const { user_id, start_location, end_location, selected_itinerary } = req.body;
+//   if (
+//     !user_id ||
+//     !start_location ||
+//     !end_location ||
+//     !selected_itinerary?.encoded_polyline
+//   ) {
+//     return res.status(400).json({
+//       error: 'user_id, start_location, end_location et selected_itinerary.encoded_polyline requis.'
+//     });
+//   }
+
+//   try {
+//     // Décodage de la chaîne polyline
+//     const decoded = polyline.decode(selected_itinerary.encoded_polyline)
+//       .map(([lat, lng]) => ({ lat, lng }));
+
+//     // Création en base
+//     const itinerary = await Itinerary.create({
+//       user_id,
+//       start_location,
+//       end_location,
+//       route_points: decoded,
+//       duration: selected_itinerary.duration,
+//       distance: selected_itinerary.distance,
+//       cost: 0,
+//       toll_free: selected_itinerary.toll_free
+//     });
+
+//     return res.status(201).json({
+//       message: 'Itinéraire sélectionné enregistré',
+//       itinerary
+//     });
+
+//   } catch (err) {
+//     console.error('❗ Erreur loadItinerary :', err.message);
+//     return res.status(500).json({
+//       error: "Erreur lors de l'enregistrement de l'itinéraire.",
+//       details: err.message
+//     });
+//   }
+// };
+
+
+const loadItinerary = async (req, res) => {
+  const { user_id, start_location, end_location, selected_itinerary } = req.body;
+
+  if (!user_id || !start_location || !end_location || !selected_itinerary) {
     return res.status(400).json({
-      error: 'Les champs start_location, end_location et user_id sont requis.'
+      error: 'user_id, start_location, end_location et selected_itinerary requis.'
+    });
+  }
+
+  const {
+    steps,
+    route_points: rawPoints,
+    duration,
+    distance,
+    toll_free
+  } = selected_itinerary;
+
+  // On essaie d'abord de décoder les steps, sinon on retombe sur les rawPoints envoyés
+  let route_points;
+  if (Array.isArray(steps) && steps.length > 0) {
+    route_points = steps.flatMap(step =>
+      polyline.decode(step.polyline.points).map(([lat, lng]) => ({ lat, lng }))
+    );
+  } else if (Array.isArray(rawPoints) && rawPoints.length > 0) {
+    route_points = rawPoints;
+  } else {
+    return res.status(400).json({
+      error: 'selected_itinerary.steps ou selected_itinerary.route_points requis.'
     });
   }
 
   try {
-    // Préparation des paramètres pour l'API Google Maps Directions
-    const params = {
-      origin: start_location,
-      destination: end_location,
-      mode: 'driving',
-      key: process.env.GOOGLE_API_KEY
-    };
-
-    // Si l'utilisateur souhaite éviter les péages, ajouter le paramètre 'avoid'
-    if (avoidTolls) {
-      params.avoid = 'tolls';
-    }
-
-    // Appel à l'API Google Maps pour obtenir l'itinéraire
-    const response = await client.directions({ params });
-    const route = response.data.routes[0];
-
-    // Décodage de la polyline pour obtenir les points du trajet
-    const encodedPolyline = route.overview_polyline.points;
-    const decodedPoints = polyline.decode(encodedPolyline);
-    const routePoints = decodedPoints.map(([lat, lng]) => ({ lat, lng }));
-
-    // Création de l'itinéraire dans la base de données via Sequelize
     const itinerary = await Itinerary.create({
       user_id,
       start_location,
       end_location,
-      route_points: routePoints,
-      duration: route.legs[0].duration.value,   // Durée en secondes
-      distance: route.legs[0].distance.value,     // Distance en mètres
-      cost: 0,                                    // Coût par défaut
-      toll_free: avoidTolls ? true : false        // En fonction du paramètre envoyé
+      route_points,    // jamais null maintenant
+      duration,
+      distance,
+      cost: 0,
+      toll_free,
+      steps
     });
 
     return res.status(201).json({
-      message: 'Itinéraire créé',
+      message: 'Itinéraire sélectionné enregistré',
       itinerary
     });
-  } catch (error) {
-    console.error("Erreur lors de la recherche d'itinéraire :", error.message);
+  } catch (err) {
+    console.error('❗ Erreur loadItinerary :', err.message);
     return res.status(500).json({
-      error: "Erreur lors de la recherche d'itinéraire."
+      error: "Erreur lors de l'enregistrement de l'itinéraire.",
+      details: err.message
     });
   }
 };
+
+
+
+
+
 
 // 🔁 Recalculer l'itinéraire en cas d'incidents
 const recalculateItinerary = async (req, res) => {
@@ -138,4 +257,4 @@ const recalculateItinerary = async (req, res) => {
   }
 };
 
-module.exports = { searchItinerary, recalculateItinerary };
+module.exports = { searchItinerary, loadItinerary, recalculateItinerary };

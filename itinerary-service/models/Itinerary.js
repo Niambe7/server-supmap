@@ -37,6 +37,11 @@ const Itinerary = sequelize.define('Itinerary', {
     allowNull: false,
     defaultValue: false,
   },
+  steps: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: []
+  },
 }, {
   tableName: 'itineraries', // Nom de la table dans la base
   timestamps: true,

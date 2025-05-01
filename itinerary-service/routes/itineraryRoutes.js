@@ -6,6 +6,8 @@ const itineraryController = require('../controllers/itineraryController');
 // Route pour créer un itinéraire
 router.post('/search', itineraryController.searchItinerary);
 
+router.post('/load', itineraryController.loadItinerary);
+
 // Route pour recalculer un itinéraire
 router.post('/recalculate', itineraryController.recalculateItinerary);
 
