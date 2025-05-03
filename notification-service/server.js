@@ -1,64 +1,75 @@
 // notification-service/server.js
+
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const socketIo = require('socket.io');
 const dotenv = require('dotenv');
-const http = require('http');
+const { verifyToken } = require('./auth');
+
 dotenv.config();
 
+const jwt = require('jsonwebtoken');
+const secret = process.env.JWT_SECRET; 
+
 const app = express();
-
-const server = http.createServer(app);
-
-app.use(cors());
+app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
 
+// Crée un serveur HTTP à partir de l’app Express
+const server = http.createServer(app);
 
-// Initialisation de Socket.IO sur le serveur HTTP
+// Initialise Socket.IO sur le serveur HTTP
 const io = socketIo(server, {
-  cors: {
-    origin: "*", // pour simplifier en dev, mais restreignez en prod
-    methods: ["GET", "POST"]
+  cors: { origin: '*', methods: ['GET', 'POST'] }
+});
+
+// Middleware d’authentification Socket.IO : lit le token dans handshake.auth
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Auth error: token missing'));
+  try {
+    const payload = jwt.verify(token, secret);
+    socket.userId = payload.id;
+    next();
+  } catch {
+    next(new Error('Auth error: Invalid token'));
   }
 });
 
-  // Quand un client se connecte
-  io.on('connection', (socket) => {
-    console.log(`[Notification Service] Client connecté: ${socket.id}`);
-    socket.on('disconnect', () => {
-      console.log(`[Notification Service] Client déconnecté: ${socket.id}`);
-    });
+// Gestion des connexions clients
+io.on('connection', socket => {
+  console.log(`Client connecté: socketId=${socket.id}, userId=${socket.userId}`);
+  socket.join(`user:${socket.userId}`);
+  socket.on('disconnect', () => {
+    console.log(`Client déconnecté: socketId=${socket.id}`);
   });
-  
-  // Endpoint REST pour tester l'envoi d'une notification
-  app.post('/notify-changeway', (req, res) => {
-    const { message, data } = req.body;
-    console.log(`[Notification Service] Envoi d'une notification: ${message}`, data);
-    io.emit('notification', { message, data }); // Diffuse à tous les clients connectés
-    res.json({ status: 'Notification envoyée' });
+});
+
+// Endpoint REST pour notifier un utilisateur spécifique
+app.post('/notify-contribute', (req, res) => {
+  const { userId, message, data } = req.body;
+  io.to(`user:${userId}`).emit('notification', { message, data });
+  res.json({ status: 'OK' });
+});
+
+// Endpoint REST pour notifier un utilisateur d'un recalcul d'itinéraire
+app.post('/notify-recalculate', (req, res) => {
+  const { userId, message, data } = req.body;
+
+  // Émet sur la même room 'user:<userId>' un événement dédié 'recalculate-itinerary'
+  io.to(`user:${userId}`).emit('recalculate-itinerary', {
+    message,
+    data
   });
 
-  app.post('/notify-contibute', (req, res) => {
-    const { message, data } = req.body;
-    console.log(`[Notification Service] Envoi d'une notification: ${message}`, data);
-    io.emit('notification', { message, data }); // Diffuse à tous les clients connectés
-    res.json({ status: 'Notification envoyée' });
-  });
+  return res.json({ status: 'OK' });
+});
+// Health check
+app.get('/', (req, res) => res.send('OK'));
 
-  app.post('/test-notification', (req, res) => {
-    const { message, data } = req.body;
-    console.log(`[Notification Service] Envoi de notification de test : ${message}`, data);
-    io.emit('notification', { message, data });
-    res.json({ status: 'Notification envoyée' });
-  });
-  
-  // Route de test pour vérifier le fonctionnement du service
-  app.get('/', (req, res) => {
-    res.send('Notification Service opérationnel');
-  });
-  
-  // Démarrage du serveur
-  const PORT = process.env.PORT || 7005;
-  app.listen(PORT, () => {
-    console.log(`[Notification Service] En écoute sur le port ${PORT}`);
-  });
+// Démarrage du serveur
+const PORT = process.env.PORT || 7005;
+server.listen(PORT, () => {
+  console.log(`Notification Service en écoute sur le port ${PORT}`);
+});

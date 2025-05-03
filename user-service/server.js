@@ -1,16 +1,19 @@
 // user-service/server.js
+
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const sequelize = require('./config/db');
 const userRoutes = require('./routes/userRoutes');
 const locationRoutes = require('./routes/locationRoutes');
+const recalcRoutes = require('./routes/recalculateRoutes');
+
 const authMiddleware = require('./middleware/authMiddleware');
 
 dotenv.config();
 const app = express();
 
-// 1) Trust proxy pour accepter X-Forwarded-* si besoin
+// 1) Trust proxy si besoin (reste en place au cas où)
 app.set('trust proxy', true);
 
 // 2) Logger TOUTES les requêtes et headers reçus
@@ -22,26 +25,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// 3) Middleware de blocage : n’autoriser que si X-From-Gateway === 'true'
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    console.log('[User-Service]   ↳ OPTIONS detected, skipping gateway check');
-    return next();
-  }
-  const fromGw = req.headers['x-from-gateway'];
-  console.log('[User-Service]   ↳ Valeur x-from-gateway:', fromGw);
-  if (fromGw == 'true') {
-    console.warn('[User-Service] ⚠️ Accès direct interdit');
-    return res.status(403).send('Accès direct interdit');
-  }
-  next();
-});
+// 3) — Middleware de blocage retiré, on ne vérifie plus X-From-Gateway
 
 // 4) CORS
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
   methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-From-Gateway']
+  allowedHeaders: ['Content-Type','Authorization']
 }));
 
 // 5) Body parsing
@@ -56,9 +46,11 @@ app.use((req, res, next) => {
 
 // 7) Montages des routes
 app.use('/users', userRoutes);
-app.use('/location', authMiddleware, locationRoutes);
+app.use('/location', locationRoutes);
+app.use('/recalculate', recalcRoutes);
 
-// 8) 404 catch‑all
+
+// 8) 404 catch-all
 app.use((req, res) => {
   console.warn(`[User-Service] 404 pour ${req.method} ${req.originalUrl}`);
   res.status(404).json({

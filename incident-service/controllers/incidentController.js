@@ -1,7 +1,7 @@
 // incident-service/controllers/incidentController.js
+const { Sequelize } = require('sequelize');
 const axios = require('axios');                       // ← Import d'axios
-const Incident = require('../models/Incident');
-const IncidentContribution = require('../models/IncidentContribution');
+const { Incident, IncidentContribution } = require('../models');
 
 // Calcul de la distance entre deux points GPS
 const haversineDistance = (coord1, coord2) => {
@@ -185,12 +185,56 @@ const contributeIncident = async (req, res) => {
   }
 };
 
+/**
+ * Récupère le tout premier incident en statut "pending",
+ * avec le nombre de votes "yes" pour les contributions associées.
+ */
+const getFirstPendingIncident = async (req, res) => {
+  try {
+    // 1) Récupérer le tout premier incident en status "pending"
+    const incident = await Incident.findOne({
+      where: { status: 'pending' },
+      order: [['id', 'ASC']],
+    });
+
+    // 2) Si aucun incident, renvoyer 404
+    if (!incident) {
+      return res.status(404).json({ error: 'Aucun incident pending trouvé.' });
+    }
+
+    // 3) Sinon, renvoyer l’incident
+    return res.status(200).json({ incident });
+  } catch (err) {
+    console.error('Erreur getFirstPendingIncident:', err);
+    return res
+      .status(500)
+      .json({ error: 'Erreur interne lors de la récupération de l’incident.' });
+  }
+};
+
+
 // Récupérer les incidents avec statut 'pending'
 const getPendingIncidents = async (req, res) => {
   try {
     const incidents = await Incident.findAll({
-      where: { status: 'pending' }
+      where: { status: 'pending' },
+      include: [
+        {
+          model: IncidentContribution,
+          attributes: [],
+          where: { vote: 'yes' },
+          required: false
+        }
+      ],
+      attributes: {
+        include: [
+          [Sequelize.fn('COUNT', Sequelize.col('IncidentContributions.id')), 'yesVotes']
+        ]
+      },
+      group: ['Incident.id'],
+      order: [['id', 'ASC']]
     });
+
     return res.status(200).json({ incidents });
   } catch (error) {
     console.error("Erreur lors de la récupération des incidents pending :", error.message);
@@ -233,5 +277,6 @@ module.exports = {
   haversineDistance,
   getPendingIncidents,
   getResolvedIncidents,
-  getActiveIncidents
+  getActiveIncidents,
+  getFirstPendingIncident
 };

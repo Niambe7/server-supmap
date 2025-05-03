@@ -1,64 +1,146 @@
+// user-service/routes/locationRoutes.js
+
 const express = require('express');
 const router = express.Router();
-const axios = require('axios'); // Pour appeler le Notification Service
-const Incident = require('../../incident-service/models/Incident'); // Modèle Incident
+const axios = require('axios');
 
+// URL du service Incident (cross-service)
+const INCIDENT_SVC   = process.env.INCIDENT_SVC_URL || 'http://localhost:7004';
+// Racine du mount /notify de l’API-Gateway
+const NOTIF_SVC_BASE = process.env.NOTIF_SVC_URL      || 'https://api.supmap-server.pp.ua/notify';
+
+// Client Axios pour récupérer les incidents (timeout 5s)
+const axiosIncident = axios.create({
+  baseURL: INCIDENT_SVC,
+  timeout: 5000,
+});
+
+// Client Axios pour envoyer les notifications (timeout 5s)
+const axiosNotif = axios.create({
+  baseURL: NOTIF_SVC_BASE,
+  timeout: 5000,
+});
+
+/**
+ * In-memory store pour garder la trace des notifications envoyées :
+ * Map<userId, Set<incidentId>>
+ */
+const notifiedMap = new Map();
+
+/**
+ * Calcule la distance Haversine entre deux coordonnées GPS (en mètres)
+ */
 const haversineDistance = (coord1, coord2) => {
-  // Coordonnées sous forme d'objet { lat, lng }
-  const toRad = (x) => (x * Math.PI) / 180;
-  const R = 6371e3; // Rayon de la Terre en mètres
+  const toRad = x => (x * Math.PI) / 180;
+  const R = 6_371_000; // Rayon de la Terre en mètres
   const φ1 = toRad(coord1.lat);
   const φ2 = toRad(coord2.lat);
   const Δφ = toRad(coord2.lat - coord1.lat);
   const Δλ = toRad(coord2.lng - coord1.lng);
 
   const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.sin(Δφ / 2) ** 2 +
     Math.cos(φ1) * Math.cos(φ2) *
-    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    Math.sin(Δλ / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c; // Distance en mètres
+  return R * c;
 };
 
-// Middleware d'authentification déjà appliqué (pour avoir req.user)
-
+/**
+ * POST /location/update
+ * - Reçoit userId, latitude & longitude
+ * - Récupère tous les incidents 'pending'
+ * - Calcule la distance pour chacun
+ * - Sélectionne ceux à ≤ 300 m
+ * - Choisit le plus proche
+ * - Envoie UNE SEULE notification par incident/par user
+ * - Répond immédiatement
+ */
 router.post('/update', async (req, res) => {
-  const { latitude, longitude } = req.body;
-  const userId = req.user.id;
+  const { latitude, longitude, userId: bodyUserId } = req.body;
+  const userId = req.user?.id || bodyUserId;
 
-  if (!latitude || !longitude) {
-    return res.status(400).json({ error: "Les champs 'latitude' et 'longitude' sont requis" });
+  // Validation des entrées
+  if (!userId) {
+    return res.status(400).json({ error: "Champ 'userId' manquant." });
+  }
+  if (latitude == null || longitude == null) {
+    return res.status(400).json({ error: "Les champs 'latitude' et 'longitude' sont requis." });
   }
 
+  console.log(`[Update] user=${userId} coords=(${latitude},${longitude})`);
+
   try {
-    // Récupérer les incidents actifs
-    const incidents = await Incident.findAll({ where: { status: 'active' } });
-    const userCoords = { lat: parseFloat(latitude), lng: parseFloat(longitude) };
+    // 1) Récupérer tous les incidents pending
+    const resp = await axiosIncident.get(
+      '/incidents/getincdentpending',
+      { headers: { Authorization: req.headers.authorization } }
+    );
 
-    // Vérifier la proximité pour chaque incident
-    for (const incident of incidents) {
-      const incidentCoords = { lat: incident.latitude, lng: incident.longitude };
-      const distance = haversineDistance(incidentCoords, userCoords);
-
-      if (distance <= 300) {
-        // Appeler le Notification Service pour envoyer une notification à cet utilisateur
-        // Par exemple, en effectuant une requête POST vers le Notification Service
-        await axios.post('http://localhost/notify/notify-contibute', { 
-          message: `Attention, un incident de type "${incident.type}" a été signalé à proximité.`,
-          data: { incidentId: incident.id, distance }
-        }, {
-          headers: { Authorization: req.headers.authorization }
-        });
-        // On peut décider d'arrêter la vérification après la première notification, 
-        // ou cumuler les notifications si plusieurs incidents se trouvent à proximité.
-      }
+    let incidents = resp.data;
+    // Si la réponse est { incidents: [...] }
+    if (!Array.isArray(incidents) && Array.isArray(resp.data.incidents)) {
+      incidents = resp.data.incidents;
+    }
+    if (!Array.isArray(incidents)) {
+      console.error('[Update] format inattendu pour incidents:', resp.data);
+      return res.status(500).json({ error: 'Format inattendu des données incidents.' });
     }
 
-    res.status(200).json({ message: "Mise à jour de position traitée" });
+    // 2) Calculer la distance pour chaque incident
+    const userCoords = { lat: parseFloat(latitude), lng: parseFloat(longitude) };
+    const withDistances = incidents.map(incident => {
+      const incCoords = { lat: incident.latitude, lng: incident.longitude };
+      const distance = haversineDistance(incCoords, userCoords);
+      return { ...incident, distance };
+    });
+
+    // 3) Filtrer ceux à ≤ 300 m
+    const nearby = withDistances.filter(i => i.distance <= 300);
+    if (nearby.length === 0) {
+      console.log('[Update] Aucun incident à ≤ 300 m');
+      return res.status(200).json({ message: 'Aucun incident proche.' });
+    }
+
+    // 4) Choisir le plus proche (min distance)
+    nearby.sort((a, b) => a.distance - b.distance);
+    const nearest = nearby[0];
+    console.log(`[Prox] incident=${nearest.id} distance=${Math.round(nearest.distance)}m`);
+
+    // 5) Vérifier si on a déjà notifié cet incident pour cet utilisateur
+    let notifiedSet = notifiedMap.get(userId);
+    if (!notifiedSet) {
+      notifiedSet = new Set();
+      notifiedMap.set(userId, notifiedSet);
+    }
+
+    if (!notifiedSet.has(nearest.id)) {
+      // 6) Envoyer UNE SEULE notification
+      await axiosNotif.post(
+        '/notify/notify-contribute',
+        {
+          userId,
+          message: `🚨 Incident "${nearest.type}" à ${Math.round(nearest.distance)} m de vous.`,
+          data: { incidentId: nearest.id, distance: nearest.distance }
+        },
+        { headers: { Authorization: req.headers.authorization } }
+      );
+      console.log(`[Notif] envoyée pour incident=${nearest.id}`);
+      notifiedSet.add(nearest.id);
+    } else {
+      console.log(`[Notif] déjà envoyée précédemment pour incident=${nearest.id}`);
+    }
+
+    // 7) Répondre immédiatement
+    return res.status(200).json({
+      message: 'Position mise à jour, notification traitée pour le incident le plus proche.'
+    });
+
   } catch (error) {
-    console.error("Erreur lors de la mise à jour de position:", error.message);
-    res.status(500).json({ error: "Erreur lors de la mise à jour de position" });
+    console.error('[Update] Erreur interne:', error.response?.data || error.message);
+    return res.status(500).json({
+      error: 'Erreur lors de la récupération des incidents ou mise à jour de position.'
+    });
   }
 });
 

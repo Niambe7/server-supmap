@@ -18,8 +18,13 @@ router.put('/:id/resolve', authMiddleware, adminMiddleware, incidentController.r
 router.post('/:id/contribute', authMiddleware, incidentController.contributeIncident);
 
 // Routes pour récupérer les incidents par statut
-router.get('/getincdentpending', authMiddleware, incidentController.getPendingIncidents);
+router.get('/getincdentpending', incidentController.getPendingIncidents);
+router.get('/getfirstpending', incidentController.getFirstPendingIncident);
+
 router.get('/getincdentactive', authMiddleware, incidentController.getActiveIncidents);
+
+router.get('/getincdentactiverecalcul', incidentController.getActiveIncidents);
+
 router.get('/getincdentresolved', authMiddleware, incidentController.getResolvedIncidents);
 
 module.exports = router;

@@ -2,6 +2,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
+
 const IncidentContribution = sequelize.define('IncidentContribution', {
   incident_id: {
     type: DataTypes.INTEGER,
@@ -28,5 +29,7 @@ const IncidentContribution = sequelize.define('IncidentContribution', {
   tableName: 'incident_contributions',
   timestamps: true
 });
+
+
 
 module.exports = IncidentContribution;
