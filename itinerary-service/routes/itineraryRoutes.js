@@ -11,4 +11,6 @@ router.post('/load', itineraryController.loadItinerary);
 // Route pour recalculer un itinéraire
 router.post('/recalculate', itineraryController.recalculateItinerary);
 
+router.get('/:id', itineraryController.getItineraryById);
+
 module.exports = router;

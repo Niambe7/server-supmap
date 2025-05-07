@@ -157,7 +157,7 @@ const recalculateItinerary = async (req, res) => {
     if (!itinerary) {
       console.log(`❗ recalculateItinerary: itinéraire ${itinerary_id} non trouvé`);
       return res.status(404).json({ error: 'Itinéraire non trouvé.' });
-    }
+    } 
 
     // 2) Origin / destination
     const origin = (current_position?.lat != null && current_position?.lng != null)
@@ -259,5 +259,36 @@ const recalculateItinerary = async (req, res) => {
 };
 
 
+/**
+ * ▶ Récupérer un itinéraire existant par son ID
+ */
+const getItineraryById = async (req, res) => {
+  const { id } = req.params;
+  console.log(`▶️ getItineraryById: requête pour itinéraire ${id}`);
 
-module.exports = { searchItinerary, loadItinerary, recalculateItinerary };
+  if (!id) {
+    console.log('❗ getItineraryById: ID manquant');
+    return res.status(400).json({ error: "Le paramètre 'id' est requis." });
+  }
+
+  try {
+    const itinerary = await Itinerary.findByPk(id);
+
+    if (!itinerary) {
+      console.log(`❗ getItineraryById: itinéraire ${id} non trouvé`);
+      return res.status(404).json({ error: 'Itinéraire non trouvé.' });
+    }
+
+    console.log(`✅ getItineraryById: itinéraire ${id} récupéré`);
+    return res.status(200).json({ itinerary });
+  } catch (err) {
+    console.error('❗ getItineraryById: erreur interne', err.message);
+    return res.status(500).json({
+      error: 'Erreur lors de la récupération de l’itinéraire.',
+      details: err.message
+    });
+  }
+};
+
+
+module.exports = { searchItinerary, loadItinerary, recalculateItinerary , getItineraryById};

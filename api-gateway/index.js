@@ -45,7 +45,8 @@ mountProxy('/users',       'http://localhost:7001');
 mountProxy('/itineraries', 'http://localhost:7003');
 mountProxy('/incidents',   'http://localhost:7004');
 mountProxy('/statistics',  'http://localhost:7006');
-
+mountProxy('/qrcode',  'http://localhost:8000');
+mountProxy('/oauth',  'http://localhost:8002');
 // 4) Monte le service de notification (HTTP + WS)
 //    - toutes les requêtes /notify/* → localhost:7005/*
 //    - /notify/socket.io/* → /socket.io/* côté notif-service

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Générateur de QR Itinéraire</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    input, button { font-size: 1rem; padding: 0.5rem; }
+    #qrContainer { margin-top: 1rem; }
+    #qrImage { max-width: 300px; border: 1px solid #ccc; }
+    #error { color: red; }
+  </style>
+</head>
+<body>
+
+  <h1>Générateur de QR Code Itinéraire</h1>
+
+  <label for="itineraryId">ID Itinéraire :</label>
+  <input id="itineraryId" type="number" min="1" placeholder="Ex : 128" />
+
+  <button id="btnGenerate">Générer QR Code</button>
+
+  <p id="error"></p>
+
+  <div id="qrContainer">
+    <img id="qrImage" src="" alt="QR Code" hidden />
+  </div>
+
+  <script>
+    const btn   = document.getElementById('btnGenerate');
+    const input = document.getElementById('itineraryId');
+    const error = document.getElementById('error');
+    const img   = document.getElementById('qrImage');
+
+    btn.addEventListener('click', async () => {
+      error.textContent = '';
+      img.hidden = true;
+
+      const id = input.value.trim();
+      if (!id) {
+        error.textContent = 'Merci de saisir un ID valide.';
+        return;
+      }
+
+      try {
+        // 1) Vérifier que l'itinéraire existe
+        const check = await fetch(`https://api.supmap-server.pp.ua/itineraries/itineraries/${id}`);
+        if (!check.ok) {
+          throw new Error('Itinéraire non trouvé (code ' + check.status + ').');
+        }
+
+        // 2) Récupérer le QR code en blob
+        const qrRes = await fetch(`https://api.supmap-server.pp.ua/qrcode/qrcode/${id}`);
+        if (!qrRes.ok) {
+          throw new Error('Impossible de générer le QR code (code ' + qrRes.status + ').');
+        }
+        const blob = await qrRes.blob();
+
+        // 3) Afficher l’image
+        img.src = URL.createObjectURL(blob);
+        img.hidden = false;
+
+      } catch (err) {
+        console.error(err);
+        error.textContent = err.message || 'Une erreur est survenue.';
+      }
+    });
+  </script>
+
+</body>
+</html>
